@@ -202,4 +202,3 @@ runs:
         set -euo pipefail
 
         echo "pipeline_status=scan_completed_without_baseline_and_uploaded" >> "$GITHUB_OUTPUT"
-

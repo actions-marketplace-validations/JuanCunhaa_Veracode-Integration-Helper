@@ -49,6 +49,7 @@ jobs:
           zip -r app.zip .
 
       - name: Bantuu Veracode Baseline
+        id: bantuu_veracode_baseline
         uses: Afrikatec-JuanCunhaa/bantuu-baseline@v1
         with:
           bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
@@ -96,3 +97,31 @@ jobs:
 
 - `repository_full_name`  
   `org/repo` usado para consultar e enviar baseline ao Bantuu.
+
+---
+
+## Usando os outputs no workflow
+
+Exemplo de como reagir ao resultado do scan e ao uso de baseline:
+
+```yaml
+      - name: Verificar se havia baseline no Bantuu
+        run: |
+          echo "Has baseline: ${{ steps.bantuu_veracode_baseline.outputs.has_baseline }}"
+          echo "Pipeline status: ${{ steps.bantuu_veracode_baseline.outputs.pipeline_status }}"
+
+      - name: Ação quando não havia baseline
+        if: ${{ steps.bantuu_veracode_baseline.outputs.pipeline_status == 'scan_completed_without_baseline_and_uploaded' }}
+        run: echo "Primeiro scan concluído, baseline criado no Bantuu."
+```
+
+---
+
+## Notas e limitações
+
+- A Action foi projetada para rodar em `ubuntu-latest` (usa `apt-get` e `sudo` para instalar `jq`).
+- Requer acesso de rede até `https://bantuu.io` a partir do runner.
+- A URL base do Bantuu está fixa em `https://bantuu.io`.
+- É responsabilidade do workflow gerar o arquivo indicado em `scan_file` antes da chamada.
+- O scan é executado via `veracode/Veracode-pipeline-scan-action@v1.0.20`.
+
