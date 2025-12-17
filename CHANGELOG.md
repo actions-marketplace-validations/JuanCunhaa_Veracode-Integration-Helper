@@ -6,6 +6,10 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
 
 ## [Unreleased]
 
+## [1.0.3] - 2025-12-17
+
+- Adicionar input opcional `bantuu_base_url` para permitir configurar a URL base do Bantuu (padrão `https://bantuu.io`), possibilitando uso de ambientes de desenvolvimento/homologação.
+
 ## [1.0.2] - 2025-12-12
 
 - Melhorias de documentação no `README.md` (exemplo de uso dos outputs, notas e limitações).
@@ -23,4 +27,3 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
 - Versão inicial da Action **Bantuu Veracode Baseline**.
 - Integração com Veracode Pipeline Scan.
 - Consulta e criação de baseline no Bantuu a partir do `results.json`.
-

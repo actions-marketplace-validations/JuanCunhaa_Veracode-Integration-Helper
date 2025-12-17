@@ -53,6 +53,8 @@ jobs:
         uses: Afrikatec-JuanCunhaa/bantuu-baseline@v1
         with:
           bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
+          # Opcional: sobrescrever URL base do Bantuu (por exemplo, ambiente de dev/homolog)
+          # bantuu_base_url: 'https://bantuu-dev.example.com'
           veracode_api_id: ${{ secrets.VERACODE_API_ID }}
           veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
           scan_file: app.zip
@@ -67,6 +69,9 @@ jobs:
 
 - `bantuu_api_key` (obrigatório)  
   API Key usada no header `X-API-Key` do Bantuu (GET baseline e POST upload).
+
+- `bantuu_base_url` (opcional, default: `"https://bantuu.io"`)  
+  Base URL do Bantuu. Use para apontar para ambientes de desenvolvimento/homologação quando necessário.
 
 - `veracode_api_id` (obrigatório)  
   ID da API do Veracode.
@@ -120,8 +125,8 @@ Exemplo de como reagir ao resultado do scan e ao uso de baseline:
 ## Notas e limitações
 
 - A Action foi projetada para rodar em `ubuntu-latest` (usa `apt-get` e `sudo` para instalar `jq`).
-- Requer acesso de rede até `https://bantuu.io` a partir do runner.
-- A URL base do Bantuu está fixa em `https://bantuu.io`.
+- Requer acesso de rede até a URL configurada em `bantuu_base_url` (por padrão `https://bantuu.io`) a partir do runner.
+- A URL base padrão do Bantuu é `https://bantuu.io`, mas pode ser sobrescrita via input `bantuu_base_url` (por exemplo, para ambientes de dev/staging).
 - É responsabilidade do workflow gerar o arquivo indicado em `scan_file` antes da chamada.
 - O scan é executado via `veracode/Veracode-pipeline-scan-action@v1.0.20`.
 

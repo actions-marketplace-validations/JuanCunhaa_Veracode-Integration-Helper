@@ -9,6 +9,10 @@ inputs:
   bantuu_api_key:
     description: 'API Key usada no header X-API-Key do Bantuu (GET baseline e POST upload).'
     required: true
+  bantuu_base_url:
+    description: 'Base URL do Bantuu (ex.: https://bantuu.io).'
+    required: false
+    default: 'https://bantuu.io'
   veracode_api_id:
     description: 'ID da API do Veracode.'
     required: true
@@ -80,11 +84,12 @@ runs:
       env:
         BANTUU_API_KEY: ${{ inputs.bantuu_api_key }}
         REPOSITORY_FULL_NAME: ${{ steps.resolve_repo.outputs.repository_full_name }}
+        BANTUU_BASE_URL: ${{ inputs.bantuu_base_url }}
       run: |
         set -euo pipefail
 
         RESPONSE_FILE="baseline-response.json"
-        BANTUU_BASE_URL="https://bantuu.io"
+        BANTUU_BASE_URL="${BANTUU_BASE_URL:-https://bantuu.io}"
 
         echo "Consultando Bantuu em ${BANTUU_BASE_URL} para o repositório ${REPOSITORY_FULL_NAME}..."
 
@@ -157,6 +162,7 @@ runs:
       env:
         BANTUU_API_KEY: ${{ inputs.bantuu_api_key }}
         REPOSITORY_FULL_NAME: ${{ steps.resolve_repo.outputs.repository_full_name }}
+        BANTUU_BASE_URL: ${{ inputs.bantuu_base_url }}
       run: |
         set -euo pipefail
 
@@ -165,7 +171,7 @@ runs:
           exit 1
         fi
 
-        BANTUU_BASE_URL="https://bantuu.io"
+        BANTUU_BASE_URL="${BANTUU_BASE_URL:-https://bantuu.io}"
 
         echo "Montando payload para upload do baseline para o Bantuu..."
         payload=$(jq -c --arg repo "${REPOSITORY_FULL_NAME}" \
