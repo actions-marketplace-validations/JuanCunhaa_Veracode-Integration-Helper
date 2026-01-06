@@ -1,0 +1,87 @@
+name: 'Auto packager'
+description: 'Prepara o artefato a ser enviado ao Veracode Pipeline Scan usando a Veracode CLI (Auto Packager) ou um zip informado.'
+
+inputs:
+  enable_auto_packager:
+    description: 'Ativa/desativa o uso do Veracode Auto Packager (true/false).'
+    required: false
+    default: 'false'
+  scan_file:
+    description: 'Caminho do artefato já empacotado quando o auto packager está desativado.'
+    required: false
+
+outputs:
+  scan_file:
+    description: 'Caminho efetivo do arquivo a ser usado no Veracode Pipeline Scan.'
+    value: ${{ steps.prepare.outputs.scan_file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Prepare scan file
+      id: prepare
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        ENABLE="${{ inputs.enable_auto_packager }}"
+        INPUT_SCAN_FILE="${{ inputs.scan_file }}"
+
+        if [ "${ENABLE}" = "true" ]; then
+          if ! command -v veracode >/dev/null 2>&1; then
+            echo "Instalando Veracode CLI..." >&2
+            curl -fsS https://tools.veracode.com/veracode-cli/install | sh
+          fi
+
+          echo "Veracode CLI instalada. Versao:" >&2
+          veracode --version || true
+
+          echo "Rodando 'veracode package discover' (melhor para .NET/Maven; ignorado se nao suportado)..." >&2
+          veracode package discover || true
+
+          echo "Executando Auto Packager padrao: veracode package" >&2
+          PACKAGE_OUTPUT="$(bash -lc "veracode package" 2>&1 | tee veracode_package.log)"
+
+          ZIP_FILE="$(printf '%s\n' "${PACKAGE_OUTPUT}" | sed -n 's/.*Package created: \([^[:space:]]\+\).*/\1/p' | tail -n 1 || true)"
+
+          if [ -z "${ZIP_FILE:-}" ]; then
+            echo "Aviso: nao foi possivel extrair o nome do pacote do output da CLI. Tentando localizar arquivos ZIP..." >&2
+            shopt -s nullglob
+            zips=( veracode-artifact-*.zip )
+            if [ ${#zips[@]} -eq 0 ]; then
+              zips=( *.zip )
+            fi
+            shopt -u nullglob
+            if [ ${#zips[@]} -eq 0 ]; then
+              echo "Erro: nenhum arquivo .zip gerado pela Veracode CLI (Auto Packager)." >&2
+              exit 1
+            fi
+            ZIP_FILE="${zips[0]}"
+          fi
+
+          if [ ! -f "${ZIP_FILE}" ]; then
+            echo "Erro: arquivo '${ZIP_FILE}' nao encontrado apos o Auto Packager." >&2
+            exit 1
+          fi
+
+          TARGET="app.zip"
+
+          if [ "${TARGET}" != "${ZIP_FILE}" ]; then
+            cp "${ZIP_FILE}" "${TARGET}"
+          fi
+
+          echo "scan_file=${TARGET}" >> "$GITHUB_OUTPUT"
+        else
+          if [ -z "${INPUT_SCAN_FILE}" ]; then
+            echo "Erro: scan_file nao foi fornecido e enable_auto_packager esta 'false'." >&2
+            exit 1
+          fi
+
+          if [ ! -f "${INPUT_SCAN_FILE}" ]; then
+            echo "Erro: arquivo '${INPUT_SCAN_FILE}' nao encontrado." >&2
+            exit 1
+          fi
+
+          echo "scan_file=${INPUT_SCAN_FILE}" >> "$GITHUB_OUTPUT"
+        fi
+

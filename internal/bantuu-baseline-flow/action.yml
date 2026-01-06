@@ -1,0 +1,169 @@
+name: 'Bantuu baseline flow'
+description: 'Consulta baseline no Bantuu e roda Veracode Pipeline Scan com ou sem baseline, subindo baseline se necessário.'
+
+inputs:
+  bantuu_api_key:
+    description: 'API Key usada no Bantuu.'
+    required: true
+  repository_full_name:
+    description: 'Repositório org/repo usado nas chamadas ao Bantuu.'
+    required: true
+  veracode_api_id:
+    description: 'ID da API do Veracode.'
+    required: true
+  veracode_api_key:
+    description: 'Key da API do Veracode.'
+    required: true
+  scan_file:
+    description: 'Arquivo compactado enviado ao Pipeline Scan (ex.: app.zip).'
+    required: true
+  policy_fail:
+    description: 'Define se o scan deve quebrar o build por policy (true/false).'
+    required: false
+    default: 'false'
+  fail_on_severity:
+    description: 'Severidades que fazem o scan falhar quando há baseline.'
+    required: false
+
+outputs:
+  has_baseline:
+    description: 'true/false indicando se o Bantuu possui baseline para o repositório.'
+    value: ${{ steps.check_baseline.outputs.has_baseline }}
+  pipeline_status:
+    description: 'Resumo do caminho seguido: com baseline ou sem baseline e upload.'
+    value: ${{ steps.pipeline_status_with_baseline.outputs.pipeline_status || steps.pipeline_status_without_baseline.outputs.pipeline_status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Ensure jq is installed
+      id: ensure_jq
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if ! command -v jq >/dev/null 2>&1; then
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+        fi
+
+    - name: Check baseline from Bantuu
+      id: check_baseline
+      shell: bash
+      env:
+        BANTUU_API_KEY: ${{ inputs.bantuu_api_key }}
+        REPOSITORY_FULL_NAME: ${{ inputs.repository_full_name }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${BANTUU_API_KEY:-}" ]; then
+          echo "Erro: bantuu_api_key nao foi fornecida." >&2
+          exit 1
+        fi
+
+        RESPONSE_FILE="baseline-response.json"
+        BANTUU_BASE_URL="https://www.bantuu.io"
+
+        HTTP_STATUS=$(curl -sS -w "%{http_code}" -o "${RESPONSE_FILE}" \
+          -H "X-API-Key: ${BANTUU_API_KEY}" \
+          "${BANTUU_BASE_URL}/api/veracode/baseline?repositoryFullName=${REPOSITORY_FULL_NAME}")
+
+        if [ "${HTTP_STATUS}" -ge 400 ]; then
+          echo '{}' > "${RESPONSE_FILE}"
+        fi
+
+        if [ ! -s "${RESPONSE_FILE}" ]; then
+          echo '{}' > "${RESPONSE_FILE}"
+        fi
+
+        HAS_BASELINE=$(jq -r '.hasBaseline // false' "${RESPONSE_FILE}")
+        if [ "${HAS_BASELINE}" != "true" ]; then
+          HAS_BASELINE="false"
+        fi
+
+        echo "has_baseline=${HAS_BASELINE}" >> "$GITHUB_OUTPUT"
+
+    - name: Create local baseline file from Bantuu
+      id: create_local_baseline
+      if: steps.check_baseline.outputs.has_baseline == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        jq '.results' baseline-response.json > baseline.json
+
+    - name: Run Veracode Pipeline Scan with baseline
+      id: pipeline_with_baseline
+      if: steps.check_baseline.outputs.has_baseline == 'true'
+      uses: veracode/Veracode-pipeline-scan-action@v1.0.20
+      with:
+        vid: ${{ inputs.veracode_api_id }}
+        vkey: ${{ inputs.veracode_api_key }}
+        file: ${{ inputs.scan_file }}
+        baseline_file: 'baseline.json'
+        fail_build: ${{ inputs.policy_fail }}
+        fail_on_severity: ${{ inputs.fail_on_severity }}
+        json_output: 'true'
+        json_output_file: 'results.json'
+
+    - name: Run Veracode Pipeline Scan without baseline
+      id: pipeline_without_baseline
+      if: steps.check_baseline.outputs.has_baseline == 'false'
+      uses: veracode/Veracode-pipeline-scan-action@v1.0.20
+      with:
+        vid: ${{ inputs.veracode_api_id }}
+        vkey: ${{ inputs.veracode_api_key }}
+        file: ${{ inputs.scan_file }}
+        fail_build: ${{ inputs.policy_fail }}
+        json_output: 'true'
+        json_output_file: 'results.json'
+
+    - name: Upload new baseline results to Bantuu
+      id: upload_results
+      if: steps.check_baseline.outputs.has_baseline == 'false'
+      shell: bash
+      env:
+        BANTUU_API_KEY: ${{ inputs.bantuu_api_key }}
+        REPOSITORY_FULL_NAME: ${{ inputs.repository_full_name }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -f "results.json" ]; then
+          echo "Erro: results.json nao encontrado apos o Pipeline Scan." >&2
+          exit 1
+        fi
+
+        BANTUU_BASE_URL="https://www.bantuu.io"
+
+        payload=$(jq -c --arg repo "${REPOSITORY_FULL_NAME}" \
+          '. as $scan | {repositoryFullName: $repo, scanResult: $scan}' results.json)
+
+        HTTP_STATUS=$(curl -sS -w "%{http_code}" -o /tmp/bantuu-upload-response.txt \
+          -X POST "${BANTUU_BASE_URL}/api/veracode/stock-issues/upload" \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${BANTUU_API_KEY}" \
+          -d "${payload}")
+
+        if [ "${HTTP_STATUS}" -ge 400 ]; then
+          echo "Erro ao enviar baseline para Bantuu. Verifique as credenciais." >&2
+          cat /tmp/bantuu-upload-response.txt || true
+          exit 1
+        fi
+
+    - name: Set pipeline status output (with baseline)
+      id: pipeline_status_with_baseline
+      if: steps.check_baseline.outputs.has_baseline == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "pipeline_status=scan_completed_with_baseline" >> "$GITHUB_OUTPUT"
+
+    - name: Set pipeline status output (without baseline)
+      id: pipeline_status_without_baseline
+      if: steps.check_baseline.outputs.has_baseline == 'false'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "pipeline_status=scan_completed_without_baseline_and_uploaded" >> "$GITHUB_OUTPUT"

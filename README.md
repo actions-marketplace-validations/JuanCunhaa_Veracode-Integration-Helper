@@ -1,97 +1,62 @@
 # Bantuu Veracode Baseline
 
-Action para rodar o **Veracode Pipeline Scan** integrado com baseline vindo do **Bantuu**.
+GitHub Action para rodar o **Veracode Pipeline Scan** com suporte opcional a **baseline do Bantuu** e ao **Veracode Auto Packager**.
 
-- Se **não houver baseline** no Bantuu para o repositório (`org/repo`):
-  - Roda o Pipeline Scan sem baseline;
-  - Gera `results.json`;
-  - Envia o `results.json` para o Bantuu para ser usado como baseline futuro.
-- Se **já existir baseline**:
-  - Baixa o baseline do Bantuu;
-  - Cria `baseline.json` local;
-  - Roda o Pipeline Scan usando `baseline.json` como baseline.
+Este repositório é orientado por exemplos. Use o guia abaixo para escolher o workflow conforme o cenário desejado.
 
 ---
 
-## Requisitos
+## Guia de cenários e exemplos
 
-- Repositório usando GitHub Actions;
-- Secrets configurados no repositório:
-  - `BANTUU_API_KEY`
-  - `VERACODE_API_ID`
-  - `VERACODE_API_KEY`
-- Artefato compactado para envio ao Veracode (ex.: `app.zip`).
+- **Artefato + Baseline (scan_file + Bantuu)**  
+  - Usa artefato `.zip` gerado pelo seu próprio build (`scan_file`).  
+  - Integra com baseline do Bantuu (consulta/usa baseline e faz upload quando necessário).  
+  - Exemplo: `examples/artifact-with-baseline.yml`
 
----
+- **Artefato + apenas Pipeline Scan (sem Bantuu)**  
+  - Usa artefato `.zip` gerado pelo seu próprio build (`scan_file`).  
+  - Roda somente o Veracode Pipeline Scan, sem chamadas ao Bantuu.  
+  - Exemplo: `examples/artifact-without-baseline.yml`
 
-## Exemplo de workflow (`.github/workflows/veracode-bantuu.yml`)
+- **Auto packager + Baseline**  
+  - Usa o Veracode Auto Packager (CLI padrão `veracode package`) para gerar o `.zip`.  
+  - Integra com baseline do Bantuu.  
+  - Exemplo: `examples/autopackager-with-baseline.yml`
 
-```yaml
-name: Security Scan (Veracode + Bantuu)
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  veracode-baseline:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build and package application
-        run: |
-          # Exemplo: gere o artefato para o Veracode, por exemplo app.zip
-          zip -r app.zip .
-
-      - name: Bantuu Veracode Baseline
-        id: bantuu_veracode_baseline
-        uses: Afrikatec-JuanCunhaa/bantuu-baseline@v1
-        with:
-          bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
-          veracode_api_id: ${{ secrets.VERACODE_API_ID }}
-          veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
-          scan_file: app.zip
-          policy_fail: 'false'
-          # Opcional: só será aplicado quando houver baseline
-          # fail_on_severity: 'Very High, High'
-```
+- **Auto packager + apenas Pipeline Scan (sem Bantuu)**  
+  - Usa o Veracode Auto Packager para gerar o `.zip`.  
+  - Roda somente o Veracode Pipeline Scan, sem Bantuu.  
+  - Exemplo: `examples/autopackager-without-baseline.yml`
 
 ---
 
-## Inputs
+## Parâmetros (inputs principais)
 
-- `bantuu_api_key` (obrigatório)  
-  API Key usada no Bantuu.
+- `bantuu_api_key` – API Key do Bantuu (obrigatória quando `enable_baseline` = `true`).
+- `enable_sca` – Ativa/desativa o Veracode SCA em background (`'true'` ou `'false'`).
+- `veracode_sca_token` – Token de API do Veracode SCA (usado quando `enable_sca` = `true`).
+- `enable_iac` – Ativa/desativa o Veracode IaC Scan em background (`'true'` ou `'false'`).
+- `enable_pipelinescan` – Ativa/desativa o Veracode Pipeline Scan (`'true'` ou `'false'`).
+- `enable_upload_scan` – Ativa/desativa o Veracode Upload & Scan (`'true'` ou `'false'`).
+- `enable_baseline` – Ativa/desativa o uso de baseline do Bantuu (`'true'` ou `'false'`).
+- `enable_auto_packager` – Ativa/desativa o uso do Veracode Auto Packager (comando padrão `veracode package`).
+- `veracode_api_id` – ID da API do Veracode.
+- `veracode_api_key` – Key da API do Veracode.
+- `veracode_appname` – Nome do aplicativo no Veracode (default: org/repo do GitHub).
+- `veracode_sandbox` – Define se o Upload & Scan usa sandbox (`'true'`) ou o app principal (`'false'`).
+- `scan_file` – Caminho do artefato `.zip` já empacotado (usado quando o auto packager está desativado).
+- `policy_fail` – Define se o scan deve quebrar o build por policy (`'true'`/`'false'`).
+- `fail_on_severity` – Severidades que fazem o scan falhar quando há baseline (ex.: `Very High, High`).
 
-- `veracode_api_id` (obrigatório)  
-  ID da API do Veracode.
-
-- `veracode_api_key` (obrigatório)  
-  Key da API do Veracode.
-
-- `scan_file` (obrigatório)  
-  Arquivo compactado enviado ao Pipeline Scan (ex.: `app.zip`).
-
-- `policy_fail` (opcional, default: `"false"`)  
-  Define se o scan deve quebrar o build por policy (`true`/`false`).
-
-- `fail_on_severity` (opcional)  
-  Severidades que fazem o scan falhar. (ex.: `"Very High, High"`).
+- URL base do Bantuu (fixa): `https://www.bantuu.io`.
+- Arquivo de saída do Auto Packager (fixo): `app.zip`.
 
 ---
 
-## Notas e limitações
+Os parâmetros e comportamentos completos da Action estão documentados em:
 
-- A Action foi projetada para rodar em `ubuntu-latest` (usa `apt-get` e `sudo` para instalar `jq`).
-- Requer acesso de rede até a URL configurada (por padrão `https://www.bantuu.io`) a partir do runner.
-- A URL base padrão do Bantuu é `https://www.bantuu.io`.
-- É responsabilidade do workflow gerar o arquivo indicado em `scan_file` antes da chamada.
-- O scan é executado via `veracode/Veracode-pipeline-scan-action@v1.0.20`.
+- `action.yml` (raiz da Action)  
+- Actions compostas internas em `internal/`
 
 ---
 

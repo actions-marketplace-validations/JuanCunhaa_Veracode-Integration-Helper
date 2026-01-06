@@ -6,6 +6,16 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
 
 ## [Unreleased]
 
+- Adicionado input `enable_baseline` para ativar/desativar o uso do baseline do Bantuu.
+- Modularização da Action em sub-actions internas (`internal/resolve-repo`, `internal/bantuu-baseline-flow`, `internal/pipeline-only`, `internal/auto-packager`).
+- Suporte ao **Veracode Auto Packager** via `enable_auto_packager`, usando a CLI padrão (`veracode package discover` + `veracode package`) para gerar o artefato `.zip` do Pipeline Scan.
+- Ajuste do `internal/auto-packager` para tornar `veracode package discover` best-effort (não falha quando não suportado) e **remover** o uso de inputs customizados (`auto_packager_command`, `auto_packager_output_dir`, `auto_packager_output`), simplificando o fluxo para sempre usar o comando padrão da Veracode CLI e o arquivo de saída fixo `app.zip`.
+- Adicionado input `enable_sca` e `veracode_sca_token` e criada sub-action interna `internal/veracode-sca` para disparar o Veracode SCA em background, sem bloquear o fluxo do Pipeline Scan.
+- Adicionado input `enable_iac` e criada sub-action interna `internal/veracode-iac` para disparar o Veracode IaC Scan em background, reutilizando o `veracode_api_id`/`veracode_api_key` já configurados.
+- Adicionado input `enable_pipelinescan` para permitir desativar totalmente o Veracode Pipeline Scan quando necessário.
+- Adicionado input `enable_upload_scan`, `veracode_appname` e `veracode_sandbox`, além da sub-action interna `internal/veracode-upload-scan`, para executar o Veracode Upload & Scan como último passo usando o mesmo artefato do Pipeline Scan.
+- Atualização do `README.md` e dos exemplos em `examples/` para refletir os novos fluxos (artefato vs. auto packager, com e sem baseline), os scanners SCA/IaC em background, o controle de Pipeline Scan e o Upload & Scan, e os valores fixos de URL (`https://www.bantuu.io`) e artefato (`app.zip`).
+
 ## [1.0.4] - 2025-12-18
 
 - Remover saídas de debug desnecessárias nos scripts da Action.

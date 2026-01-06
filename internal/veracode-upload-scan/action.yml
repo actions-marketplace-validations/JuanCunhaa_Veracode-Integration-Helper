@@ -1,0 +1,47 @@
+name: 'Veracode Upload & Scan'
+description: 'Envia o artefato para o Veracode e inicia um Static Scan (Upload & Scan).'
+
+inputs:
+  veracode_api_id:
+    description: 'ID da API do Veracode (VID).'
+    required: true
+  veracode_api_key:
+    description: 'Key da API do Veracode (VKEY).'
+    required: true
+  veracode_appname:
+    description: 'Nome do aplicativo no Veracode (default: org/repo do GitHub).'
+    required: false
+    default: '${{ github.repository }}'
+  veracode_sandbox:
+    description: 'Define se o Upload & Scan deve usar sandbox (true) ou o app principal (false).'
+    required: false
+    default: 'true'
+  filepath:
+    description: 'Caminho do arquivo .zip a ser enviado para o Veracode (mesmo artefato do Pipeline Scan).'
+    required: true
+  scantimeout:
+    description: 'Tempo, em minutos, para aguardar o resultado do scan. Use 0 para disparar o scan sem aguardar a conclusão.'
+    required: false
+    default: '0'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Veracode Upload & Scan
+      id: upload_and_scan
+      uses: veracode/veracode-uploadandscan-action@master
+      with:
+        appname: ${{ inputs.veracode_appname }}
+        createprofile: true
+        filepath: ${{ inputs.filepath }}
+        version: 'Scan from GitHub job: ${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}'
+        vid: ${{ inputs.veracode_api_id }}
+        vkey: ${{ inputs.veracode_api_key }}
+        createsandbox: ${{ inputs.veracode_sandbox }}
+        sandboxname: ${{ github.repository }}-sandbox
+        scanallnonfataltoplevelmodules: true
+        includenewmodules: true
+        deleteincompletescan: true
+        scantimeout: ${{ inputs.scantimeout }}
+        scanpollinginterval: 120
+        maxretrycount: 5

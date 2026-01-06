@@ -1,0 +1,29 @@
+name: 'Veracode SCA'
+description: 'Roda o Veracode Software Composition Analysis (SCA) em background usando o agente oficial.'
+
+inputs:
+  veracode_sca_token:
+    description: 'Token de API do Veracode SCA (mapeado para SRCCLR_API_TOKEN).'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Disparar Veracode SCA em background
+      id: run_sca
+      shell: bash
+      env:
+        SRCCLR_API_TOKEN: ${{ inputs.veracode_sca_token }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${SRCCLR_API_TOKEN:-}" ]; then
+          echo "Erro: veracode_sca_token nao foi fornecido." >&2
+          exit 1
+        fi
+
+        echo "Disparando Veracode SCA em background..." >&2
+
+        (
+          curl -sSL https://sca-downloads.veracode.com/ci.sh | bash -s -- scan
+        ) > veracode_sca.log 2>&1 &

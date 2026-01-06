@@ -1,5 +1,5 @@
 name: 'Bantuu Veracode Baseline'
-description: 'Executa o Veracode Pipeline Scan integrado ao baseline do Bantuu.'
+description: 'Executa o Veracode Pipeline Scan opcionalmente integrado ao baseline do Bantuu.'
 author: 'Afrika Tecnologia / JuanCunhaa'
 branding:
   icon: 'shield'
@@ -8,20 +8,51 @@ branding:
 inputs:
   bantuu_api_key:
     description: 'API Key usada no header X-API-Key do Bantuu (GET baseline e POST upload).'
-    required: true
-  bantuu_base_url:
-    description: 'Base URL do Bantuu (ex.: https://www.bantuu.io).'
     required: false
-    default: 'https://www.bantuu.io'
+  enable_sca:
+    description: 'Ativa/desativa o Veracode SCA em background (true/false).'
+    required: false
+    default: 'false'
+  veracode_sca_token:
+    description: 'Token de API do Veracode SCA (usado quando enable_sca = true).'
+    required: false
+  enable_iac:
+    description: 'Ativa/desativa o Veracode IaC Scan em background (true/false).'
+    required: false
+    default: 'false'
+  enable_pipelinescan:
+    description: 'Ativa/desativa o Veracode Pipeline Scan (true/false).'
+    required: false
+    default: 'true'
+  enable_upload_scan:
+    description: 'Ativa/desativa o Veracode Upload & Scan (true/false).'
+    required: false
+    default: 'false'
+  enable_baseline:
+    description: 'Ativa/desativa o fluxo de baseline do Bantuu (true/false).'
+    required: false
+    default: 'true'
+  enable_auto_packager:
+    description: 'Ativa/desativa o uso do Veracode Auto Packager antes do scan (true/false).'
+    required: false
+    default: 'false'
   veracode_api_id:
     description: 'ID da API do Veracode.'
     required: true
   veracode_api_key:
     description: 'Key da API do Veracode.'
     required: true
+  veracode_appname:
+    description: 'Nome do aplicativo no Veracode. Default: org/repo do GitHub.'
+    required: false
+    default: '${{ github.repository }}'
+  veracode_sandbox:
+    description: 'Define se o Upload & Scan deve usar sandbox (true) ou o app principal (false).'
+    required: false
+    default: 'true'
   scan_file:
-    description: 'Arquivo compactado enviado ao Pipeline Scan (ex.: app.zip).'
-    required: true
+    description: 'Arquivo compactado enviado ao Pipeline Scan (ex.: app.zip). Usado quando o auto packager está desativado.'
+    required: false
   policy_fail:
     description: 'Define se o scan deve quebrar o build por policy (true/false).'
     required: false
@@ -33,10 +64,10 @@ inputs:
 outputs:
   has_baseline:
     description: 'true/false indicando se o Bantuu possui baseline para o repositório.'
-    value: ${{ steps.check_baseline.outputs.hasBaseline }}
+    value: ${{ steps.bantuu_baseline_flow.outputs.has_baseline || 'false' }}
   pipeline_status:
-    description: 'Resumo do caminho seguido: com baseline ou sem baseline e upload.'
-    value: ${{ steps.pipeline_status_with_baseline.outputs.pipeline_status || steps.pipeline_status_without_baseline.outputs.pipeline_status }}
+    description: 'Resumo do caminho seguido: com baseline, sem baseline (com upload), apenas scan ou pipeline desativado.'
+    value: ${{ steps.bantuu_baseline_flow.outputs.pipeline_status || steps.pipeline_without_bantuu.outputs.pipeline_status || steps.pipeline_disabled_status.outputs.pipeline_status }}
   repository_full_name:
     description: 'Repositório org/repo usado para consultar e enviar baseline ao Bantuu.'
     value: ${{ steps.resolve_repo.outputs.repository_full_name }}
@@ -44,152 +75,72 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Run Veracode SCA (background)
+      id: veracode_sca
+      if: inputs.enable_sca == 'true'
+      uses: ./internal/veracode-sca
+      with:
+        veracode_sca_token: ${{ inputs.veracode_sca_token }}
+
+    - name: Run Veracode IaC Scan (background)
+      id: veracode_iac
+      if: inputs.enable_iac == 'true'
+      uses: ./internal/veracode-iac
+      with:
+        veracode_api_id: ${{ inputs.veracode_api_id }}
+        veracode_api_key: ${{ inputs.veracode_api_key }}
+
+    - name: Prepare scan file (auto packager)
+      id: prepare_scan_file
+      uses: ./internal/auto-packager
+      with:
+        enable_auto_packager: ${{ inputs.enable_auto_packager }}
+        scan_file: ${{ inputs.scan_file }}
+
     - name: Resolve repository full name
       id: resolve_repo
-      shell: bash
-      env:
-        GITHUB_REPOSITORY: ${{ github.repository }}
-      run: |
-        set -euo pipefail
+      uses: ./internal/resolve-repo
 
-        REPO="${GITHUB_REPOSITORY}"
-
-        if [ -z "${REPO}" ]; then
-          echo "Erro: github.repository não está definido no contexto. Não foi possível determinar o repositório." >&2
-          exit 1
-        fi
-
-        echo "REPOSITORY_FULL_NAME=${REPO}" >> "$GITHUB_ENV"
-        echo "repository_full_name=${REPO}" >> "$GITHUB_OUTPUT"
-
-    - name: Ensure jq is installed
-      id: ensure_jq
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        if ! command -v jq >/dev/null 2>&1; then
-          sudo apt-get update -y
-          sudo apt-get install -y jq
-        fi
-
-    - name: Check baseline from Bantuu
-      id: check_baseline
-      shell: bash
-      env:
-        BANTUU_API_KEY: ${{ inputs.bantuu_api_key }}
-        REPOSITORY_FULL_NAME: ${{ steps.resolve_repo.outputs.repository_full_name }}
-        BANTUU_BASE_URL: ${{ inputs.bantuu_base_url }}
-      run: |
-        set -euo pipefail
-
-        RESPONSE_FILE="baseline-response.json"
-        BANTUU_BASE_URL="${BANTUU_BASE_URL:-https://www.bantuu.io}"
-
-        HTTP_STATUS=$(curl -sS -w "%{http_code}" -o "${RESPONSE_FILE}" \
-          -H "X-API-Key: ${BANTUU_API_KEY}" \
-          "${BANTUU_BASE_URL}/api/veracode/baseline?repositoryFullName=${REPOSITORY_FULL_NAME}")
-
-        if [ "${HTTP_STATUS}" -ge 400 ]; then
-          echo '{}' > "${RESPONSE_FILE}"
-        fi
-
-        if [ ! -s "${RESPONSE_FILE}" ]; then
-          echo '{}' > "${RESPONSE_FILE}"
-        fi
-
-        HAS_BASELINE=$(jq -r '.hasBaseline // false' "${RESPONSE_FILE}")
-        if [ "${HAS_BASELINE}" != "true" ]; then
-          HAS_BASELINE="false"
-        fi
-
-        echo "HAS_BASELINE=${HAS_BASELINE}" >> "$GITHUB_ENV"
-
-        echo "hasBaseline=${HAS_BASELINE}" >> "$GITHUB_OUTPUT"
-        echo "has_baseline=${HAS_BASELINE}" >> "$GITHUB_OUTPUT"
-
-    - name: Create local baseline file from Bantuu
-      id: create_local_baseline
-      if: steps.check_baseline.outputs.hasBaseline == 'true'
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        jq '.results' baseline-response.json > baseline.json
-
-    - name: Run Veracode Pipeline Scan with baseline
-      id: pipeline_with_baseline
-      if: steps.check_baseline.outputs.hasBaseline == 'true'
-      uses: veracode/Veracode-pipeline-scan-action@v1.0.20
+    - name: Run Veracode Pipeline Scan with Bantuu baseline
+      id: bantuu_baseline_flow
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true'
+      uses: ./internal/bantuu-baseline-flow
       with:
-        vid: ${{ inputs.veracode_api_id }}
-        vkey: ${{ inputs.veracode_api_key }}
-        file: ${{ inputs.scan_file }}
-        baseline_file: 'baseline.json'
-        fail_build: ${{ inputs.policy_fail }}
+        bantuu_api_key: ${{ inputs.bantuu_api_key }}
+        repository_full_name: ${{ steps.resolve_repo.outputs.repository_full_name }}
+        veracode_api_id: ${{ inputs.veracode_api_id }}
+        veracode_api_key: ${{ inputs.veracode_api_key }}
+        scan_file: ${{ steps.prepare_scan_file.outputs.scan_file }}
+        policy_fail: ${{ inputs.policy_fail }}
         fail_on_severity: ${{ inputs.fail_on_severity }}
-        json_output: 'true'
-        json_output_file: 'results.json'
 
-    - name: Run Veracode Pipeline Scan without baseline
-      id: pipeline_without_baseline
-      if: steps.check_baseline.outputs.hasBaseline == 'false'
-      uses: veracode/Veracode-pipeline-scan-action@v1.0.20
+    - name: Run Veracode Pipeline Scan without Bantuu
+      id: pipeline_without_bantuu
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
+      uses: ./internal/pipeline-only
       with:
-        vid: ${{ inputs.veracode_api_id }}
-        vkey: ${{ inputs.veracode_api_key }}
-        file: ${{ inputs.scan_file }}
-        fail_build: ${{ inputs.policy_fail }}
-        json_output: 'true'
-        json_output_file: 'results.json'
+        veracode_api_id: ${{ inputs.veracode_api_id }}
+        veracode_api_key: ${{ inputs.veracode_api_key }}
+        scan_file: ${{ steps.prepare_scan_file.outputs.scan_file }}
+        policy_fail: ${{ inputs.policy_fail }}
 
-    - name: Upload new baseline results to Bantuu
-      id: upload_results
-      if: steps.check_baseline.outputs.hasBaseline == 'false'
-      shell: bash
-      env:
-        BANTUU_API_KEY: ${{ inputs.bantuu_api_key }}
-        REPOSITORY_FULL_NAME: ${{ steps.resolve_repo.outputs.repository_full_name }}
-        BANTUU_BASE_URL: ${{ inputs.bantuu_base_url }}
-      run: |
-        set -euo pipefail
-
-        if [ ! -f "results.json" ]; then
-          echo "Erro: results.json não encontrado após o Pipeline Scan." >&2
-          exit 1
-        fi
-
-        BANTUU_BASE_URL="${BANTUU_BASE_URL:-https://www.bantuu.io}"
-
-        payload=$(jq -c --arg repo "${REPOSITORY_FULL_NAME}" \
-          '. as $scan | {repositoryFullName: $repo, scanResult: $scan}' results.json)
-
-        HTTP_STATUS=$(curl -sS -w "%{http_code}" -o /tmp/bantuu-upload-response.txt \
-          -X POST "${BANTUU_BASE_URL}/api/veracode/stock-issues/upload" \
-          -H "Content-Type: application/json" \
-          -H "X-API-Key: ${BANTUU_API_KEY}" \
-          -d "${payload}")
-
-        if [ "${HTTP_STATUS}" -ge 400 ]; then
-          echo "Erro ao enviar baseline para Bantuu. Verifique as credenciais." >&2
-          cat /tmp/bantuu-upload-response.txt || true
-          exit 1
-        fi
-
-    - name: Set pipeline status output (with baseline)
-      id: pipeline_status_with_baseline
-      if: steps.check_baseline.outputs.hasBaseline == 'true'
+    - name: Set pipeline status (pipeline scan disabled)
+      id: pipeline_disabled_status
+      if: inputs.enable_pipelinescan != 'true'
       shell: bash
       run: |
         set -euo pipefail
 
-        echo "pipeline_status=scan_completed_with_baseline" >> "$GITHUB_OUTPUT"
+        echo "pipeline_status=pipeline_scan_disabled" >> "$GITHUB_OUTPUT"
 
-    - name: Set pipeline status output (without baseline)
-      id: pipeline_status_without_baseline
-      if: steps.check_baseline.outputs.hasBaseline == 'false'
-      shell: bash
-      run: |
-        set -euo pipefail
+    - name: Veracode Upload & Scan (static)
+      id: upload_and_scan
+      if: inputs.enable_upload_scan == 'true'
+      uses: ./internal/veracode-upload-scan
+      with:
+        veracode_api_id: ${{ inputs.veracode_api_id }}
+        veracode_api_key: ${{ inputs.veracode_api_key }}
+        veracode_appname: ${{ inputs.veracode_appname }}
+        veracode_sandbox: ${{ inputs.veracode_sandbox }}
+        filepath: ${{ steps.prepare_scan_file.outputs.scan_file }}
 
-        echo "pipeline_status=scan_completed_without_baseline_and_uploaded" >> "$GITHUB_OUTPUT"

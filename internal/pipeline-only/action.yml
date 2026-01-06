@@ -1,0 +1,45 @@
+name: 'Veracode Pipeline Scan only'
+description: 'Roda apenas o Veracode Pipeline Scan sem integrar com Bantuu.'
+
+inputs:
+  veracode_api_id:
+    description: 'ID da API do Veracode.'
+    required: true
+  veracode_api_key:
+    description: 'Key da API do Veracode.'
+    required: true
+  scan_file:
+    description: 'Arquivo compactado enviado ao Pipeline Scan (ex.: app.zip).'
+    required: true
+  policy_fail:
+    description: 'Define se o scan deve quebrar o build por policy (true/false).'
+    required: false
+    default: 'false'
+
+outputs:
+  pipeline_status:
+    description: 'Resumo do caminho seguido para o scan sem Bantuu.'
+    value: ${{ steps.pipeline_status.outputs.pipeline_status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Veracode Pipeline Scan
+      id: pipeline_only
+      uses: veracode/Veracode-pipeline-scan-action@v1.0.20
+      with:
+        vid: ${{ inputs.veracode_api_id }}
+        vkey: ${{ inputs.veracode_api_key }}
+        file: ${{ inputs.scan_file }}
+        fail_build: ${{ inputs.policy_fail }}
+        json_output: 'true'
+        json_output_file: 'results.json'
+
+    - name: Set pipeline status output
+      id: pipeline_status
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "pipeline_status=scan_completed_without_bantuu" >> "$GITHUB_OUTPUT"
+

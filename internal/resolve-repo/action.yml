@@ -1,0 +1,28 @@
+name: 'Resolve Repository Full Name'
+description: 'Resolve o nome completo do repositório (org/repo).'
+
+outputs:
+  repository_full_name:
+    description: 'Repositório org/repo.'
+    value: ${{ steps.resolve.outputs.repository_full_name }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve repository full name
+      id: resolve
+      shell: bash
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+
+        REPO="${GITHUB_REPOSITORY:-}"
+
+        if [ -z "${REPO}" ]; then
+          echo "Erro: github.repository nao esta definido no contexto." >&2
+          exit 1
+        fi
+
+        echo "repository_full_name=${REPO}" >> "$GITHUB_OUTPUT"
+

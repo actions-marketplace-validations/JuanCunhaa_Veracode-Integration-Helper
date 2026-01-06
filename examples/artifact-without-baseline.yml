@@ -1,4 +1,4 @@
-name: Security Scan (Veracode + Bantuu)
+name: Security Scan (Artefato + apenas Pipeline Scan)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  veracode-baseline:
+  veracode-pipeline-only:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,16 +16,17 @@ jobs:
 
       - name: Build and package application
         run: |
-          # Exemplo: gere o artefato para o Veracode, por exemplo app.zip
+          # Gere o artefato para o Veracode, por exemplo app.zip
           zip -r app.zip .
 
-      - name: Bantuu Veracode Baseline
+      - name: Veracode Pipeline Scan (artefato sem Bantuu)
+        id: veracode_pipeline_only
         uses: Afrikatec-JuanCunhaa/bantuu-baseline@v1
         with:
-          bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
           veracode_api_id: ${{ secrets.VERACODE_API_ID }}
           veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
           scan_file: app.zip
+          enable_baseline: 'false'
+          enable_auto_packager: 'false'
           policy_fail: 'false'
-          # Opcional: só será aplicado quando houver baseline
-          # fail_on_severity: 'Very High, High'
+
