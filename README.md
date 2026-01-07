@@ -45,6 +45,12 @@ Todos os booleanos devem ser passados como string: `'true'` / `'false'`.
 | `pipeline_status` | Um de: `scan_completed_with_baseline`, `scan_completed_without_baseline_and_uploaded`, `scan_completed_without_bantuu`, `pipeline_scan_disabled`. |
 | `repository_full_name` | `org/repo` (a partir de `github.repository`). |
 
+## Artefatos (sempre publicados quando o módulo roda)
+
+- `sca-results`: `veracode_sca.log`
+- `iac-results`: pasta `iac-results/` com `results.json`, `results.txt` e SBOMs (se gerados)
+- `pipescan-results`: `results.json` e `filtered_results.json` (se existir)
+
 ## Upload & Scan (static) - comportamento fixo
 
 - `appname = org/repo`

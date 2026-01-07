@@ -96,6 +96,15 @@ runs:
           echo "::warning::Veracode SCA retornou exit code ${SCA_EXIT} (o job continua)."
         fi
 
+    - name: Upload SCA results artifact
+      if: always() && inputs.enable_sca == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: sca-results
+        path: |
+          veracode_sca.log
+        if-no-files-found: warn
+
     - name: Run Veracode IaC / Secrets (directory scan)
       id: veracode_iac
       if: inputs.enable_iac == 'true'
@@ -111,6 +120,48 @@ runs:
         format: table
         fail_build: 'false'
         fail_build_on_error: 'false'
+
+    - name: Collect IaC results files
+      if: always() && inputs.enable_iac == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        mkdir -p iac-results
+
+        files=(
+          "results.json"
+          "results.txt"
+          "sbom_cyclonedx_xml.xml"
+          "sbom_cyclonedx_json.json"
+          "sbom_spdx_tag_value.json"
+          "sbom_spdx_json.json"
+          "sbom_github.json"
+        )
+
+        moved_any="false"
+        for f in "${files[@]}"; do
+          if [ -f "${f}" ]; then
+            mv -f "${f}" "iac-results/${f}"
+            moved_any="true"
+          fi
+        done
+
+        if [ "${moved_any}" != "true" ]; then
+          echo "::warning::Nenhum arquivo de resultado do IaC foi encontrado para coletar."
+        else
+          echo "Arquivos coletados em iac-results/:"
+          ls -la iac-results || true
+        fi
+
+    - name: Upload IaC results artifact
+      if: always() && inputs.enable_iac == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: iac-results
+        path: |
+          iac-results
+        if-no-files-found: warn
 
     - name: Prepare scan file (auto packager)
       id: prepare_scan_file
@@ -303,7 +354,7 @@ runs:
     - name: Run Veracode Pipeline Scan with baseline
       id: pipeline_with_baseline
       if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'true'
-      continue-on-error: ${{ inputs.policy_fail != 'true' }}
+      continue-on-error: true
       uses: veracode/Veracode-pipeline-scan-action@v1.0.20
       with:
         vid: ${{ inputs.veracode_api_id }}
@@ -315,18 +366,10 @@ runs:
         json_output: 'true'
         json_output_file: 'results.json'
 
-    - name: Validate results.json (with baseline)
-      id: validate_results_with_baseline
-      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'true'
-      shell: bash
-      run: |
-        set -euo pipefail
-        test -f results.json
-
     - name: Run Veracode Pipeline Scan without baseline (Bantuu enabled)
       id: pipeline_without_baseline
       if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'false'
-      continue-on-error: ${{ inputs.policy_fail != 'true' }}
+      continue-on-error: true
       uses: veracode/Veracode-pipeline-scan-action@v1.0.20
       with:
         vid: ${{ inputs.veracode_api_id }}
@@ -336,13 +379,53 @@ runs:
         json_output: 'true'
         json_output_file: 'results.json'
 
-    - name: Validate results.json (without baseline, Bantuu enabled)
-      id: validate_results_without_baseline_bantuu
-      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'false'
+    - name: Set pipeline status output (with baseline)
+      id: pipeline_status_with_baseline
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'true'
       shell: bash
       run: |
         set -euo pipefail
-        test -f results.json
+        echo "pipeline_status=scan_completed_with_baseline" >> "$GITHUB_OUTPUT"
+
+    - name: Run Veracode Pipeline Scan without Bantuu
+      id: pipeline_without_bantuu
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
+      continue-on-error: true
+      uses: veracode/Veracode-pipeline-scan-action@v1.0.20
+      with:
+        vid: ${{ inputs.veracode_api_id }}
+        vkey: ${{ inputs.veracode_api_key }}
+        file: ${{ steps.prepare_scan_file.outputs.scan_file }}
+        fail_build: ${{ inputs.policy_fail }}
+        json_output: 'true'
+        json_output_file: 'results.json'
+
+    - name: Set pipeline status output (without Bantuu)
+      id: pipeline_status_without_bantuu
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "pipeline_status=scan_completed_without_bantuu" >> "$GITHUB_OUTPUT"
+
+    - name: Set pipeline status (pipeline scan disabled)
+      id: pipeline_disabled_status
+      if: inputs.enable_pipelinescan != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "pipeline_status=pipeline_scan_disabled" >> "$GITHUB_OUTPUT"
+
+    - name: Upload Pipeline Scan results artifact
+      if: always() && inputs.enable_pipelinescan == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: pipescan-results
+        path: |
+          results.json
+          filtered_results.json
+        if-no-files-found: warn
 
     - name: Upload new baseline results to Bantuu
       id: upload_results
@@ -378,14 +461,6 @@ runs:
         fi
         echo "::endgroup::"
 
-    - name: Set pipeline status output (with baseline)
-      id: pipeline_status_with_baseline
-      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'true'
-      shell: bash
-      run: |
-        set -euo pipefail
-        echo "pipeline_status=scan_completed_with_baseline" >> "$GITHUB_OUTPUT"
-
     - name: Set pipeline status output (without baseline and uploaded)
       id: pipeline_status_without_baseline
       if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'false'
@@ -394,43 +469,34 @@ runs:
         set -euo pipefail
         echo "pipeline_status=scan_completed_without_baseline_and_uploaded" >> "$GITHUB_OUTPUT"
 
-    - name: Run Veracode Pipeline Scan without Bantuu
-      id: pipeline_without_bantuu
-      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
-      continue-on-error: ${{ inputs.policy_fail != 'true' }}
-      uses: veracode/Veracode-pipeline-scan-action@v1.0.20
-      with:
-        vid: ${{ inputs.veracode_api_id }}
-        vkey: ${{ inputs.veracode_api_key }}
-        file: ${{ steps.prepare_scan_file.outputs.scan_file }}
-        fail_build: ${{ inputs.policy_fail }}
-        json_output: 'true'
-        json_output_file: 'results.json'
-
-    - name: Validate results.json (without Bantuu)
-      id: validate_results_without_bantuu
-      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
+    - name: Enforce Pipeline Scan result (policy_fail)
+      if: inputs.enable_pipelinescan == 'true'
       shell: bash
-      run: |
-        set -euo pipefail
-        test -f results.json
-
-    - name: Set pipeline status output (without Bantuu)
-      id: pipeline_status_without_bantuu
-      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
-      shell: bash
-      run: |
-        set -euo pipefail
-        echo "pipeline_status=scan_completed_without_bantuu" >> "$GITHUB_OUTPUT"
-
-    - name: Set pipeline status (pipeline scan disabled)
-      id: pipeline_disabled_status
-      if: inputs.enable_pipelinescan != 'true'
-      shell: bash
+      env:
+        POLICY_FAIL: ${{ inputs.policy_fail }}
+        WITH_BASELINE_OUTCOME: ${{ steps.pipeline_with_baseline.outcome }}
+        WITHOUT_BASELINE_OUTCOME: ${{ steps.pipeline_without_baseline.outcome }}
+        WITHOUT_BANTUU_OUTCOME: ${{ steps.pipeline_without_bantuu.outcome }}
       run: |
         set -euo pipefail
 
-        echo "pipeline_status=pipeline_scan_disabled" >> "$GITHUB_OUTPUT"
+        if [ ! -f "results.json" ]; then
+          echo "Erro: results.json nao encontrado apos o Pipeline Scan." >&2
+          exit 1
+        fi
+
+        outcome="skipped"
+        for o in "${WITH_BASELINE_OUTCOME}" "${WITHOUT_BASELINE_OUTCOME}" "${WITHOUT_BANTUU_OUTCOME}"; do
+          if [ -n "${o}" ] && [ "${o}" != "skipped" ]; then
+            outcome="${o}"
+            break
+          fi
+        done
+
+        if [ "${POLICY_FAIL}" = "true" ] && [ "${outcome}" = "failure" ]; then
+          echo "Erro: Pipeline Scan falhou e policy_fail=true." >&2
+          exit 1
+        fi
 
     - name: Compute sandbox name (upload & scan)
       id: compute_upload_sandbox

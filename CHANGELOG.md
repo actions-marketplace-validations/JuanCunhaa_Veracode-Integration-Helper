@@ -8,6 +8,12 @@ O formato e baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0
 
 - N/A.
 
+## [1.0.19] - 2026-01-07
+
+### Added
+
+- Publica artefatos com resultados no job: `sca-results`, `iac-results`, `pipescan-results`.
+
 ## [1.0.18] - 2026-01-07
 
 ### Added
