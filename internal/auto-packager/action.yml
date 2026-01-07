@@ -83,7 +83,11 @@ runs:
               rm -f app.zip
               zip -r app.zip . \
                 -x ".git/*" ".github/*" \
-                -x "node_modules/*" "*/node_modules/*" "*/*/node_modules/*" "*/*/*/node_modules/*"
+                -x "node_modules/*" "*/node_modules/*" "*/*/node_modules/*" "*/*/*/node_modules/*" \
+                -x "veracode" "veracode.exe" "veracode-cli_*" \
+                -x "app.zip" \
+                -x "results.json" "filtered_results.json" "baseline.json" "baseline-response.json" \
+                -x "veracode_package.log" "veracode_sca.log" "veracode_iac.log"
 
               echo "scan_file=app.zip" >> "$GITHUB_OUTPUT"
               exit 0

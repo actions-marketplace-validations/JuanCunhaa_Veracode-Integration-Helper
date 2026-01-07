@@ -8,6 +8,12 @@ O formato e baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0
 
 - N/A.
 
+## [1.0.12] - 2026-01-07
+
+### Fixed
+- Pipeline Scan: quando `policy_fail!='true'`, nao falha o job mesmo que o Pipeline Scan encontre issues (mantem `results.json` e valida que o arquivo foi gerado).
+- Auto Packager fallback zip: exclui binario `veracode` e arquivos de saida comuns (`results.json`, logs) do `app.zip`.
+
 ## [1.0.11] - 2026-01-07
 
 ### Fixed

@@ -191,7 +191,11 @@ runs:
               rm -f app.zip
               zip -r app.zip . \
                 -x ".git/*" ".github/*" \
-                -x "node_modules/*" "*/node_modules/*" "*/*/node_modules/*" "*/*/*/node_modules/*"
+                -x "node_modules/*" "*/node_modules/*" "*/*/node_modules/*" "*/*/*/node_modules/*" \
+                -x "veracode" "veracode.exe" "veracode-cli_*" \
+                -x "app.zip" \
+                -x "results.json" "filtered_results.json" "baseline.json" "baseline-response.json" \
+                -x "veracode_package.log" "veracode_sca.log" "veracode_iac.log"
 
               echo "scan_file=app.zip" >> "$GITHUB_OUTPUT"
               exit 0
@@ -301,6 +305,7 @@ runs:
     - name: Run Veracode Pipeline Scan with baseline
       id: pipeline_with_baseline
       if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'true'
+      continue-on-error: ${{ inputs.policy_fail != 'true' }}
       uses: veracode/Veracode-pipeline-scan-action@v1.0.20
       with:
         vid: ${{ inputs.veracode_api_id }}
@@ -312,9 +317,18 @@ runs:
         json_output: 'true'
         json_output_file: 'results.json'
 
+    - name: Validate results.json (with baseline)
+      id: validate_results_with_baseline
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f results.json
+
     - name: Run Veracode Pipeline Scan without baseline (Bantuu enabled)
       id: pipeline_without_baseline
       if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'false'
+      continue-on-error: ${{ inputs.policy_fail != 'true' }}
       uses: veracode/Veracode-pipeline-scan-action@v1.0.20
       with:
         vid: ${{ inputs.veracode_api_id }}
@@ -323,6 +337,14 @@ runs:
         fail_build: ${{ inputs.policy_fail }}
         json_output: 'true'
         json_output_file: 'results.json'
+
+    - name: Validate results.json (without baseline, Bantuu enabled)
+      id: validate_results_without_baseline_bantuu
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline == 'true' && steps.check_baseline.outputs.has_baseline == 'false'
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f results.json
 
     - name: Upload new baseline results to Bantuu
       id: upload_results
@@ -375,6 +397,7 @@ runs:
     - name: Run Veracode Pipeline Scan without Bantuu
       id: pipeline_without_bantuu
       if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
+      continue-on-error: ${{ inputs.policy_fail != 'true' }}
       uses: veracode/Veracode-pipeline-scan-action@v1.0.20
       with:
         vid: ${{ inputs.veracode_api_id }}
@@ -383,6 +406,14 @@ runs:
         fail_build: ${{ inputs.policy_fail }}
         json_output: 'true'
         json_output_file: 'results.json'
+
+    - name: Validate results.json (without Bantuu)
+      id: validate_results_without_bantuu
+      if: inputs.enable_pipelinescan == 'true' && inputs.enable_baseline != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f results.json
 
     - name: Set pipeline status output (without Bantuu)
       id: pipeline_status_without_bantuu
