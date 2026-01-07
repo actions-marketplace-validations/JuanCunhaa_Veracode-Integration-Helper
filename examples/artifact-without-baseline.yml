@@ -1,6 +1,7 @@
 name: Security Scan (Artefato + apenas Pipeline Scan)
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
   pull_request:
@@ -29,4 +30,3 @@ jobs:
           enable_baseline: 'false'
           enable_auto_packager: 'false'
           policy_fail: 'false'
-

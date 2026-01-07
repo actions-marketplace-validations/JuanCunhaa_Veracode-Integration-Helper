@@ -1,6 +1,7 @@
 name: Security Scan (Auto packager + Bantuu baseline)
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
   pull_request:
