@@ -12,6 +12,8 @@ Ordem (sempre):
 5) (Opcional) Pipeline Scan (`enable_pipelinescan='true'`) com ou sem Bantuu (`enable_baseline`)
 6) (Opcional) Upload & Scan (static) como ultimo step (`enable_upload_scan='true'`)
 
+Observacao: os logs sao organizados em grupos no console (`::group::/::endgroup::`) para ficar mais facil de navegar.
+
 Observacao: hoje o step de preparar o artefato sempre roda. Entao, se `enable_auto_packager!='true'`, voce precisa fornecer `scan_file` mesmo que o Pipeline Scan esteja desativado.
 
 ## Inputs (todos os parametros)

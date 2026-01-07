@@ -8,6 +8,12 @@ O formato e baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0
 
 - N/A.
 
+## [1.0.17] - 2026-01-07
+
+### Changed
+- Logs: adiciona grupos no console (`::group::/::endgroup::`) para SCA, Auto Packager e Bantuu baseline (check/upload).
+- Auto Packager: fallback do `zip` fica em modo quiet para reduzir poluicao no log.
+
 ## [1.0.16] - 2026-01-07
 
 ### Fixed

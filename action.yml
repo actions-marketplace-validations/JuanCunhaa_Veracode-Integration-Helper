@@ -85,13 +85,15 @@ runs:
           exit 1
         fi
 
+        echo "::group::Veracode SCA"
         set +e
         curl -sSL https://sca-downloads.veracode.com/ci.sh | bash -s -- scan --allow-dirty 2>&1 | tee veracode_sca.log
         SCA_EXIT=${PIPESTATUS[1]}
         set -e
+        echo "::endgroup::"
 
         if [ "${SCA_EXIT}" -ne 0 ]; then
-          echo "Aviso: Veracode SCA retornou exit code ${SCA_EXIT} (o job continua)." >&2
+          echo "::warning::Veracode SCA retornou exit code ${SCA_EXIT} (o job continua)."
         fi
 
     - name: Run Veracode IaC / Secrets (directory scan)
@@ -120,8 +122,11 @@ runs:
         INPUT_SCAN_FILE="${{ inputs.scan_file }}"
 
         if [ "${ENABLE}" = "true" ]; then
+          echo "::group::Prepare scan file (Auto Packager)"
           if [ -n "${INPUT_SCAN_FILE:-}" ] && [ -f "${INPUT_SCAN_FILE}" ]; then
+            echo "Usando scan_file informado: ${INPUT_SCAN_FILE}"
             echo "scan_file=${INPUT_SCAN_FILE}" >> "$GITHUB_OUTPUT"
+            echo "::endgroup::"
             exit 0
           fi
 
@@ -152,7 +157,7 @@ runs:
           set -e
 
           if [ "${PACKAGE_EXIT}" -ne 0 ]; then
-            echo "Aviso: 'veracode package' retornou exit code ${PACKAGE_EXIT}; tentando fallback." >&2
+            echo "::warning::'veracode package' retornou exit code ${PACKAGE_EXIT}; tentando fallback."
           fi
 
           ZIP_FILE="$(sed -n 's/.*Package created: \\([^[:space:]]\\+\\).*/\\1/p' veracode_package.log | tail -n 1 || true)"
@@ -165,7 +170,7 @@ runs:
             fi
             shopt -u nullglob
             if [ ${#zips[@]} -eq 0 ]; then
-              echo "Aviso: nenhum arquivo .zip gerado pela Veracode CLI (Auto Packager). Gerando app.zip via 'zip' (fallback)." >&2
+              echo "::warning::Nenhum arquivo .zip gerado pela Veracode CLI (Auto Packager). Gerando app.zip via 'zip' (fallback)."
 
               if ! command -v zip >/dev/null 2>&1; then
                 sudo apt-get update -y
@@ -173,7 +178,7 @@ runs:
               fi
 
               rm -f app.zip
-              zip -r app.zip . \
+              zip -rq app.zip . \
                 -x ".git/*" ".github/*" \
                 -x "node_modules/*" "*/node_modules/*" "*/*/node_modules/*" "*/*/*/node_modules/*" \
                 -x "veracode" "veracode.exe" "veracode-cli_*" \
@@ -181,7 +186,10 @@ runs:
                 -x "results.json" "filtered_results.json" "baseline.json" "baseline-response.json" \
                 -x "veracode_package.log" "veracode_sca.log" "veracode_iac.log"
 
+              echo "Criado app.zip (fallback):"
+              ls -lh app.zip || true
               echo "scan_file=app.zip" >> "$GITHUB_OUTPUT"
+              echo "::endgroup::"
               exit 0
             fi
             ZIP_FILE="${zips[0]}"
@@ -198,7 +206,10 @@ runs:
             cp "${ZIP_FILE}" "${TARGET}"
           fi
 
+          echo "Criado app.zip:"
+          ls -lh "${TARGET}" || true
           echo "scan_file=${TARGET}" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
         else
           if [ -z "${INPUT_SCAN_FILE}" ]; then
             echo "Erro: scan_file nao foi fornecido e enable_auto_packager esta 'false'." >&2
@@ -251,6 +262,7 @@ runs:
       run: |
         set -euo pipefail
 
+        echo "::group::Bantuu baseline (check)"
         if [ -z "${BANTUU_API_KEY:-}" ]; then
           echo "Erro: bantuu_api_key nao foi fornecida." >&2
           exit 1
@@ -277,6 +289,8 @@ runs:
         fi
 
         echo "has_baseline=${HAS_BASELINE}" >> "$GITHUB_OUTPUT"
+        echo "has_baseline=${HAS_BASELINE}"
+        echo "::endgroup::"
 
     - name: Create local baseline file from Bantuu
       id: create_local_baseline
@@ -340,6 +354,7 @@ runs:
       run: |
         set -euo pipefail
 
+        echo "::group::Bantuu baseline (upload)"
         if [ ! -f "results.json" ]; then
           echo "Erro: results.json nao encontrado apos o Pipeline Scan." >&2
           exit 1
@@ -361,6 +376,7 @@ runs:
           cat /tmp/bantuu-upload-response.txt || true
           exit 1
         fi
+        echo "::endgroup::"
 
     - name: Set pipeline status output (with baseline)
       id: pipeline_status_with_baseline
