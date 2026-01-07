@@ -8,6 +8,12 @@ O formato e baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0
 
 - N/A.
 
+## [1.0.23] - 2026-01-07
+
+### Changed
+
+- Auto Packager: corrige chamada da Veracode CLI adicionando `--source .` (e `--type directory`) no `veracode package`, evitando falha imediata por flag obrigatória ausente.
+
 ## [1.0.22] - 2026-01-07
 
 ### Changed
